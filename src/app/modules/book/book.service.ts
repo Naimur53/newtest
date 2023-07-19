@@ -1,4 +1,4 @@
-import { SortOrder } from 'mongoose';
+import mongoose, { SortOrder } from 'mongoose';
 import { paginationHelpers } from '../../../helpers/paginationHelper';
 import { IGenericResponse } from '../../../interfaces/common';
 import { IPaginationOptions } from '../../../interfaces/pagination';
@@ -8,6 +8,8 @@ import ApiError from '../../../errors/ApiError';
 import httpStatus from 'http-status';
 import { bookSearchableFields } from './book.constant';
 import moment from 'moment-timezone';
+import { Wishlist } from '../wislist/wishlist.model';
+import { Reading } from '../reading/reading.model';
 
 const getAllBook = async (
   filters: IBookFilters,
@@ -113,11 +115,34 @@ const getSingleBook = async (id: string): Promise<IBook | null> => {
 };
 
 const deleteBook = async (id: string): Promise<IBook | null> => {
-  const result = await Book.findByIdAndDelete(id);
-  if (!result) {
-    throw new ApiError(httpStatus.NOT_FOUND, 'Book not found!');
+  //   start session
+  const session = await mongoose.startSession();
+  try {
+    session.startTransaction();
+
+    const result = await Book.findByIdAndDelete(id, { session });
+    if (!result) {
+      throw new ApiError(httpStatus.NOT_FOUND, 'Book not found!');
+    }
+    // eslint-disable-next-line no-unused-vars
+    const resultForWishList = await Wishlist.deleteMany(
+      { book: id },
+      { session }
+    );
+    // eslint-disable-next-line no-unused-vars
+    const resultForReading = await Reading.deleteMany(
+      { book: id },
+      { session }
+    );
+    await session.commitTransaction();
+    await session.endSession();
+
+    return result;
+  } catch (err) {
+    await session.abortTransaction();
+    await session.endSession();
+    throw err;
   }
-  return result;
 };
 
 export const BookService = {
