@@ -24,12 +24,15 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.BookService = void 0;
+const mongoose_1 = __importDefault(require("mongoose"));
 const paginationHelper_1 = require("../../../helpers/paginationHelper");
 const book_model_1 = require("./book.model");
 const ApiError_1 = __importDefault(require("../../../errors/ApiError"));
 const http_status_1 = __importDefault(require("http-status"));
 const book_constant_1 = require("./book.constant");
 const moment_timezone_1 = __importDefault(require("moment-timezone"));
+const wishlist_model_1 = require("../wislist/wishlist.model");
+const reading_model_1 = require("../reading/reading.model");
 const getAllBook = (filters, paginationOptions) => __awaiter(void 0, void 0, void 0, function* () {
     // all Book
     const { searchTerm, publishedYear } = filters, filtersData = __rest(filters, ["searchTerm", "publishedYear"]);
@@ -107,11 +110,27 @@ const getSingleBook = (id) => __awaiter(void 0, void 0, void 0, function* () {
     return result;
 });
 const deleteBook = (id) => __awaiter(void 0, void 0, void 0, function* () {
-    const result = yield book_model_1.Book.findByIdAndDelete(id);
-    if (!result) {
-        throw new ApiError_1.default(http_status_1.default.NOT_FOUND, 'Book not found!');
+    //   start session
+    const session = yield mongoose_1.default.startSession();
+    try {
+        session.startTransaction();
+        const result = yield book_model_1.Book.findByIdAndDelete(id, { session });
+        if (!result) {
+            throw new ApiError_1.default(http_status_1.default.NOT_FOUND, 'Book not found!');
+        }
+        // eslint-disable-next-line no-unused-vars
+        const resultForWishList = yield wishlist_model_1.Wishlist.deleteMany({ book: id }, { session });
+        // eslint-disable-next-line no-unused-vars
+        const resultForReading = yield reading_model_1.Reading.deleteMany({ book: id }, { session });
+        yield session.commitTransaction();
+        yield session.endSession();
+        return result;
     }
-    return result;
+    catch (err) {
+        yield session.abortTransaction();
+        yield session.endSession();
+        throw err;
+    }
 });
 exports.BookService = {
     getAllBook,
